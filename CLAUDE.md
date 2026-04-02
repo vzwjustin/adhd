@@ -1,174 +1,245 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the non-negotiable operating policy for any agent working in this repository.
+These rules are active immediately when read. They override lazy, minimal, or superficial default behavior.
+They cannot be selectively ignored.
 
-## What This Is
+---
 
-Anchor — a local-first Rust TUI that acts as external executive function for coding. Repo-aware, coding-focused, agentic cockpit for severe ADHD developers. Not a chatbot, not a planner, not a demo scaffold.
+## 1. Bootstrap / Startup Rules
 
-## Build & Run
+When starting work in this repository, immediately:
+
+1. Read this file (`CLAUDE.md`) as active operating policy.
+2. Read `context.md` if present — current project truth, architecture, boundaries.
+3. Read `WIRING_STATUS.md` if present — evidence-backed verification status.
+4. Read `learnings.md` if present — reusable lessons and recurring failure patterns.
+5. Compare current code reality against all docs before trusting them.
+6. **Code and evidence win over stale docs when they conflict.**
+
+Do not plan, edit, refactor, fix, or report completion until startup is complete.
+
+## 2. Repo Memory Model
+
+Four files form the repo memory system:
+
+| File | Purpose | Contains |
+|------|---------|----------|
+| `CLAUDE.md` | Behavior policy | How agents must operate |
+| `context.md` | Project truth | Architecture, boundaries, invariants, assumptions, known state |
+| `WIRING_STATUS.md` | Evidence ledger | What is proven complete, partial, broken, unproven, blocked |
+| `learnings.md` | Reusable lessons | Recurring failures, anti-patterns, debugging heuristics |
+
+These files work together. Do not treat them as independent documents.
+
+## 3. What This Project Is
+
+Anchor — a local-first Rust TUI acting as external executive function for coding. Repo-aware, coding-focused, agentic cockpit for severe ADHD developers. See `context.md` for full architecture and `README.md` for user-facing documentation.
+
+## 4. Build & Run
 
 ```bash
-cargo build                    # dev build
-cargo build --release          # optimized build
-cargo run                      # launch TUI (run from inside a git repo for repo features)
-cargo test                     # run all tests
-cargo clippy                   # lint
+cargo build                    # dev build (~40 expected dead-code warnings)
+cargo build --release          # optimized build (LTO + strip)
+cargo run                      # launch TUI (run inside a git repo for repo features)
+cargo clippy                   # lint (should be clean)
 ```
 
-No external services required to boot. SQLite is bundled via `rusqlite`. AI providers are optional (Ollama default, but app runs without any provider configured).
+No external services required to boot. SQLite is bundled via `rusqlite`. AI providers are optional.
 
-## Architecture
+## 5. Operating Philosophy
 
-```
-src/
-  main.rs          — entry point, event loop, action dispatch, provider setup
-  app.rs           — App struct (single source of truth), all state transitions
-  tui.rs           — terminal init/restore, frame rendering dispatch
-  event.rs         — async event handler (keys, ticks, autosave)
-  keymap.rs        — key → Action mapping, mode-aware (Normal/Input)
-  theme.rs         — calm dark color palette and style constants
-  config.rs        — TOML config, data dir, repo detection
+1. This is a real product, not a demo scaffold. Every feature must be reachable and functional.
+2. Do not fake completion. If something is scaffolded, say it is scaffolded.
+3. Do not claim repo understanding without evidence from actual files, symbols, or structure.
+4. Do not let model prose directly mutate app state. All AI outputs are typed, validated, schema-checked.
+5. Optimize for being wired, honest, and usable — not for looking complete.
+6. When in doubt, choose the path that reduces overwhelm, preserves context, narrows scope, and increases trust.
 
-  components/      — UI views, each renders a Rect from &App (pure, no IO)
-    tab_bar.rs     — top navigation bar
-    status_bar.rs  — bottom bar: thread info, confidence, notifications
-    home_view.rs   — thread list, resume banner, interrupted-session warning
-    capture_view.rs — brain dump input for thread creation
-    focus_view.rs  — main work screen: next step, files, notes, quests, ignored
-    explore_view.rs — repo exploration: branch, changed files, TODOs, build info
-    unstuck_view.rs — stuck type selection, AI advice, drift alerts
-    verification_view.rs — run commands, display results, confidence impact
-    debug_view.rs  — hypothesis tracker with evidence, confidence history
-    patch_view.rs  — patch planning, diff preview, approve/reject, blast radius
-    command_palette.rs — Ctrl+P overlay with fuzzy filter across all actions
-    settings_view.rs — provider status, config display
+## 6. Pre-Work Discipline
 
-  domain/          — core types, no IO, no UI, serde-serializable
-    coding_thread.rs — CodingThread (19 fields), ThreadType, RelevantFile,
-                       FileRelevanceReason, Hypothesis, Note, SideQuest,
-                       DriftEvent, Checkpoint, ConfidenceHistory
-    patch.rs       — PatchPlan, PatchStatus, BlastRadius, PatchApproval, PatchMemory
-    symbol_trail.rs — SymbolTrail, SymbolEntry, SymbolKind
-    session.rs     — Session, SessionSummary
+Before touching code:
 
-  storage/         — SQLite persistence
-    db.rs          — save/load sessions, KV store, migrations
+1. Read relevant files. Do not edit code you have not read.
+2. Understand the current state. Check `WIRING_STATUS.md` for what is proven vs claimed.
+3. Identify boundaries being crossed. See `context.md` boundary catalog.
+4. Check `learnings.md` for relevant recurring failure patterns.
+5. Verify assumptions against actual code before planning changes.
 
-  repo/            — git integration and file analysis
-    git.rs         — GitState: branch, staged/unstaged/untracked, recent commits
-    scanner.rs     — RepoScan: languages, build files, TODOs, dir clusters
-    relevance.rs   — compute_relevance(): scores files with concrete reasons
+## 7. Phase / Scope Discipline
 
-  providers/       — AI provider abstraction (no provider logic leaks out)
-    traits.rs      — Provider trait, ProviderCapabilities, CompletionRequest/Response
-    router.rs      — ProviderRouter: routes AgentRole → best provider
-    openai.rs      — OpenAI-compatible adapter (also OpenRouter, LMStudio)
-    anthropic.rs   — Anthropic Claude adapter
-    ollama.rs      — Ollama local adapter
+1. Do not over-broaden scope mid-build. If side quests emerge, park them.
+2. For tasks touching more than 5 independent files, use sub-agents in parallel if available, roughly 5-8 files per agent when independence exists.
+3. Each sub-agent must have a clearly scoped objective and verify its own batch before results merge.
+4. If sub-agents are unavailable, emulate the same discipline with phased batching.
+5. Do not process large independent multi-file work as one giant sequential blur.
 
-  agents/          — focused AI passes with strict JSON schemas
-    schemas.rs     — IntakeOutput, ReducerOutput, UnstuckOutput (serde structs + JSON schemas)
-    intake.rs      — brain dump → structured thread data
-    reducer.rs     — "make smaller" — reduces step to one concrete action
-    unstuck.rs     — classifies stuck type, gives targeted advice
+## 8. Verification Requirements
 
-  services/        — orchestration layer
-    repo_context.rs — RepoContext: cached git state + scan, provider summary
-    verification.rs — run_verification(): executes commands, captures output
-    drift.rs       — detect_drift(): automatic drift + anti-perfectionism detection
-    patch.rs       — create_patch_plan(), compute_blast_radius()
-    export.rs      — thread_to_markdown(): full thread export
-    scope_guard.rs — check_scope(): 6 warning types, detect_fake_confidence()
-    thread_manager.rs — split_thread(), merge_threads(), ten_minute_snapshot()
+Do not claim success until the strongest applicable checks have been run.
 
-  util/            — errors, logging, panic hook, time formatting
-```
+Distinguish clearly between:
+- **Edited** — code changed, nothing else confirmed
+- **Built** — `cargo build` passes
+- **Linted** — `cargo clippy` clean
+- **Tested** — unit/integration tests pass (when tests exist)
+- **Runtime-validated** — actually ran and produced correct behavior
+- **Fully verified** — all applicable checks passed
 
-## Key Design Decisions
+When some proof is missing, say so. Never use a generic "done" when work is only partially validated.
 
-- **Single App struct** owns all state. Views receive `&App` for rendering, actions mutate `App` through explicit methods.
-- **Screens are pure render functions** — no state in components, all state in `App`.
-- **InputTarget enum** — the text input buffer serves multiple purposes (capture, note, side quest, ignore). `app.input_target` determines what Enter does.
-- **Crash recovery** — panic hook restores terminal. Sessions track `clean_exit` flag. Interrupted sessions detected on relaunch.
-- **Autosave** — every 30s via event tick. Dirty flag prevents unnecessary writes.
-- **AI is optional** — capture works locally (keyword-guess + first-sentence narrowing). If a provider is available, intake/reducer agents produce richer results.
-- **File relevance must carry reasons** — every `RelevantFile` has a `FileRelevanceReason` enum explaining WHY. Reasons include: in recent diff, contains symbol, imports module, matches TODO, build/config entry, etc.
-- **Strict JSON contracts** — agent passes define Rust structs + JSON schemas. Provider output is validated with serde. Malformed output triggers retry then graceful fallback.
-- **Provider routing** — `ProviderRouter` maps `AgentRole` to best available provider considering health, capabilities, and preferences. Fallback chains supported.
+The minimum bar for any code change: `cargo build` with zero errors.
 
-## State Flow
+## 9. Search Discipline
 
-```
-Capture (brain dump) → [optional AI intake] → CodingThread created → Focus screen
-  ↕ checkpoint / note / side quest / drift / ignore / hypothesis
-  ↕ "make smaller" → [AI reducer] → updated next step
-  ↕ verify → run command → capture result → update confidence
-  ↕ unstuck → classify stuck type → [optional AI coach] → targeted advice
-  ↕ debug tracker → hypotheses + evidence + confidence history
-  ↕ autosave to SQLite
-Resume (on relaunch) → detect interrupted session → show last thread + next step
-Explore → real git state, changed files, TODOs, build commands
-```
+1. Use syntax-aware search when available (e.g., `ast-grep` via `sg` at `/opt/homebrew/bin/sg`).
+2. Use text search (Grep tool) as backup and cross-check.
+3. Do not trust one grep result. For non-trivial changes, search for:
+   - Direct calls
+   - Indirect calls / trait dispatch
+   - Type references
+   - String references
+   - Config references
+   - Build/module references
+   - Registration references
+   - Exports/imports/re-exports
+   - Tests/mocks
+   - Init/startup references
+   - Teardown/cleanup references
 
-## Honest Completion Ledger
+## 10. Large File / Context Decay Discipline
 
-| Subsystem | Status |
-|-----------|--------|
-| TUI shell + terminal safety | **fully wired** |
-| Config + data dir | **fully wired** |
-| SQLite persistence | **fully wired** |
-| Domain models (thread, session, checkpoint, drift, etc.) | **fully wired** |
-| Home screen + thread list + resume banner | **fully wired** |
-| Capture flow (brain dump → thread, local + AI) | **fully wired** |
-| Focus screen (next step, files, notes, quests, ignored) | **fully wired** |
-| Note / side quest / ignore / hypothesis input modes | **fully wired** |
-| Checkpointing | **fully wired** |
-| Drift event recording (manual) | **fully wired** |
-| Automatic drift detection service | **fully wired** |
-| Anti-perfectionism detection | **fully wired** |
-| Safe quit + crash recovery | **fully wired** |
-| Autosave | **fully wired** |
-| Event loop + keymap | **fully wired** |
-| Repo scanning (languages, build files, TODOs, dirs) | **fully wired** |
-| Git state (branch, staged, unstaged, untracked, commits) | **fully wired** |
-| File relevance scoring with reasons | **fully wired** |
-| Explore view (branch, changed files, TODOs, build info) | **fully wired** |
-| Provider trait + 3 adapters (OpenAI, Anthropic, Ollama) | **fully wired** |
-| Provider router with role-based routing | **fully wired** |
-| Settings view (provider status, config) | **fully wired** |
-| AI intake agent (brain dump → structured thread) | **fully wired** |
-| AI reducer agent ("make smaller") | **fully wired** |
-| AI unstuck coach agent | **fully wired** |
-| Unstuck view (stuck types, AI advice, drift alerts) | **fully wired** |
-| Verification runner (executes commands, captures results) | **fully wired** |
-| Verification view (suggested cmd, run, results display) | **fully wired** |
-| Debug/hypothesis tracker view | **fully wired** |
-| Confidence history with visual bar chart | **fully wired** |
-| Verification → confidence auto-update | **fully wired** |
-| Verification command suggestion from repo scan | **fully wired** |
-| Patch planning domain (PatchPlan, BlastRadius, PatchMemory) | **fully wired** |
-| Patch view (list, diff preview, approve/reject, blast badge) | **fully wired** |
-| Blast radius computation (file analysis, uncommitted detection) | **fully wired** |
-| Patch approval mode (approve/reject/skip) | **fully wired** |
-| Diff preview with syntax coloring (+/-/@@ lines) | **fully wired** |
-| Command palette (Ctrl+P, fuzzy filter, all actions) | **fully wired** |
-| Markdown export (Ctrl+E, full thread to .md) | **fully wired** |
-| Symbol trail (record, resume, breadcrumb history) | **fully wired** |
-| Thread split/merge services | **fully wired** |
-| Scope guard (6 warning types, actionable suggestions) | **fully wired** |
-| Confidence-is-fake detector | **fully wired** |
-| 10-minute compressed mode | **fully wired** |
-| Symbol record input (file:symbol format) | **fully wired** |
+1. Do not assume one read captured a large file. For files over 500 lines, read in chunks.
+2. When tooling has truncation limits, use sequential offset/limit reads.
+3. Do not edit against unseen portions of a large file.
+4. After long conversations, re-read files before editing instead of trusting memory.
+5. `main.rs` is 850+ lines — always read relevant sections before editing.
 
-## Conventions
+## 11. Edit Safety
 
-- All state mutations go through `App` methods, never direct field writes from outside.
-- Views must not call IO — they only read `&App` and produce widgets.
-- New screens: add variant to `Screen` enum, add render function in `components/`, wire in `tui.rs` dispatch and `keymap.rs`.
-- New domain types: add to `domain/`, use serde derives, keep IO-free.
-- New agent passes: define output struct + JSON schema in `agents/schemas.rs`, implement pass in `agents/`, call from `main.rs` action handler.
-- New providers: implement `Provider` trait, add to `setup_providers()` in main.rs.
-- File relevance: always use `FileRelevanceReason` enum — never surface a file without a reason.
-- Notifications: use `app.notify()` with appropriate `NotificationKind`.
-- Dead code warnings for future-phase types are expected and acceptable.
+1. All state mutations go through `App` methods, never direct field writes from outside.
+2. Views must not call IO — they only read `&App` and produce widgets.
+3. Do not add features, refactor code, or make "improvements" beyond what was asked.
+4. Do not add error handling for scenarios that cannot happen.
+5. Do not create abstractions for one-time operations.
+
+## 12. Refactor / Architecture Discipline
+
+1. Preserve the module boundary structure: `components/`, `domain/`, `storage/`, `repo/`, `providers/`, `agents/`, `services/`, `util/`.
+2. Domain types must remain IO-free and serde-serializable.
+3. Provider-specific logic must never leak into domain or UI.
+4. New screens: add variant to `Screen` enum, add render function in `components/`, wire in `tui.rs` dispatch and `keymap.rs`, add key binding in `map_normal()`.
+5. New agent passes: define output struct + JSON schema in `agents/schemas.rs`, implement pass, call from `main.rs`.
+
+## 13. Contract / State / Wiring Discipline
+
+For any change, check both sides of:
+- Screen enum <-> tui.rs dispatch <-> keymap action mapping
+- Action enum <-> map_normal() key binding <-> handle_action() handler
+- InputTarget variants <-> InputEnter handler match arms
+- Provider trait <-> concrete adapter implementations
+- Domain types <-> SQLite serialization round-trip
+- App state fields <-> component render functions that read them
+
+A new enum variant without a corresponding match arm in all consumers is a compile error in Rust — but a new App state field without any component rendering it is a **silent wiring gap**.
+
+## 14. Stub / Dead Code / Fake-Complete Detection
+
+Aggressively watch for:
+- Action variants defined but not mapped to any key binding (currently: `ToggleTenMinuteMode`, `SplitThread`, `CheckScope`, `RecordSymbol`, `NavigateVerify`, `EditVerifyCommand`)
+- App state fields that no component reads (currently: `ten_minute_mode`, `ten_minute_view`, `scope_warnings`, `fake_confidence_warning`, `symbol_trail`, `focus_panel`)
+- Public methods never called (currently: `refresh_repo`, `set_role_preference`, `refresh_health`, `kv_set`, `kv_get`)
+- Database tables created but never used (currently: `threads`, `kv`)
+- Placeholder returns or no-op handlers
+- Code present only for appearance
+
+The 40 compiler warnings for dead code are documented but represent real incomplete wiring.
+
+## 15. No Scope-Dodging / Relatedness Discipline
+
+Do not dismiss errors, regressions, warnings, or downstream fallout as "unrelated" without proof.
+
+Classify surfaced issues as:
+1. **DIRECTLY CAUSED BY THE CHANGE**
+2. **INDIRECTLY EXPOSED BY THE CHANGE**
+3. **PRE-EXISTING BUT NOW BLOCKING CORRECTNESS OR VERIFICATION**
+4. **TRULY UNRELATED, WITH EVIDENCE** — only usable if supported by concrete evidence
+
+"Pre-existing" is not an excuse to ignore something that blocks correctness or verification.
+
+## 16. Root-Cause / 5 Whys Discipline
+
+For any non-trivial bug, regression, or wiring gap:
+1. Do a brief 5 Whys analysis — do not stop at the first symptom.
+2. Do not accept a guard, null check, or fallback as sufficient if the enabling cause is unexamined.
+3. Separate: confirmed cause, suspected enabling cause, symptom-only mitigation, unresolved uncertainty.
+
+Skip this for trivial edits.
+
+## 17. What-If / Edge-Case Discipline
+
+For meaningful fixes, refactors, or wiring changes, challenge with:
+- What if the input is partial, stale, invalid, or out of order?
+- What if registration never happens?
+- What if cleanup fails?
+- What if downstream still expects the old contract?
+- What if the fix only works on the happy path?
+- What if state ownership assumptions are wrong?
+- What if build inclusion exists but runtime reachability does not?
+
+## 18. Git / Commit Awareness
+
+1. Use git history as supporting evidence when available.
+2. Inspect diffs, not just commit messages.
+3. Distinguish claimed fixes from currently verified truth.
+4. Commit history is evidence of change, not proof of correctness.
+
+## 19. Contradiction / Confidence Discipline
+
+1. Track contradictions between docs and code, status and reality, claims and evidence.
+2. Contradictions must be surfaced, not silently reconciled.
+3. Do not use vague phrases like "looks good", "seems fine", "probably unrelated", "should work" unless backed by evidence.
+4. Separate: PROVEN, PARTIALLY PROVEN, NOT PROVEN, CONTRADICTED, BLOCKED.
+
+## 20. Reporting Rules
+
+Every completion report must include:
+1. Files changed and why
+2. Checks run and which passed
+3. What remains unverified
+4. Remaining risks
+5. Surfaced issues and how they were classified
+6. Whether the result is: edited only / built / linted / tested / runtime-validated / blocked
+7. Whether `context.md` was updated
+8. Whether `WIRING_STATUS.md` was updated
+9. Whether `learnings.md` was updated
+10. If any were not updated, why not
+
+Empty "done" claims are forbidden.
+
+## 21. Repo Memory Maintenance Rules
+
+When repository reality changes:
+1. Update `context.md` when architecture, boundaries, invariants, or assumptions change.
+2. Update `WIRING_STATUS.md` when verification status changes — complete, partial, broken, blocked.
+3. Update `learnings.md` when a reusable lesson emerges.
+4. Do not leave stale claims in any memory file once evidence disproves them.
+5. If a task changes repo truth or verified status, memory files must be updated before calling work complete.
+6. If verification was not performed, `WIRING_STATUS.md` must reflect that honestly.
+
+## 22. Lesson Capture Rules
+
+When working in this repo, capture important reusable lessons into `learnings.md`:
+- When a bug reveals a recurring pattern, add the lesson.
+- When a false assumption causes wasted work, add the lesson.
+- When a verification failure exposes a recurring weakness, add the lesson.
+- When a status file was wrong in a repeatable way, add the lesson.
+- When a class of "fake-complete" behavior is discovered, add the lesson.
+
+Write lessons as reusable guidance, not one-off diary notes. Only record lessons likely to matter again.
+
+## 23. Notifications and File Relevance
+
+- Use `app.notify()` with appropriate `NotificationKind` for user feedback.
+- File relevance: always use `FileRelevanceReason` enum — never surface a file without explaining why.
+- Dead code warnings for future-phase types are expected and documented in `WIRING_STATUS.md`.
