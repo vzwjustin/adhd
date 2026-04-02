@@ -28,27 +28,6 @@ pub struct ReducerOutput {
     pub related_symbol_hint: Option<String>,
 }
 
-/// Strict output schema for the Resume Summarizer agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResumeSummaryOutput {
-    pub where_you_left_off: String,
-    pub what_changed: Vec<String>,
-    pub best_restart_step: String,
-    pub five_minute_option: String,
-    pub blockers: Vec<String>,
-    pub confidence_assessment: String,
-}
-
-/// Strict output schema for the Drift Classifier agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DriftClassifierOutput {
-    pub is_drifting: bool,
-    pub drift_type: Option<String>,
-    pub description: String,
-    pub return_point: String,
-    pub side_quest_to_park: Option<String>,
-}
-
 /// Strict output schema for the Unstuck Coach agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnstuckOutput {
@@ -57,20 +36,6 @@ pub struct UnstuckOutput {
     pub recommended_action: String,
     pub specific_file_or_symbol: Option<String>,
     pub should_checkpoint: bool,
-}
-
-/// Strict output schema for the File Relevance agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileRelevanceOutput {
-    pub files: Vec<FileRelevanceItem>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileRelevanceItem {
-    pub path: String,
-    pub relevance_score: f32,
-    pub reason: String,
-    pub related_symbols: Vec<String>,
 }
 
 pub const INTAKE_SCHEMA: &str = r#"{

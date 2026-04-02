@@ -161,3 +161,50 @@ impl Severity {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::coding_thread::{CodingThread, ThreadType};
+
+    #[test]
+    fn test_healthy_scope() {
+        let t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        let warnings = check_scope(&t);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_too_many_files() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        for i in 0..15 {
+            t.relevant_files.push(crate::domain::coding_thread::RelevantFile {
+                path: format!("file{i}.rs"),
+                relevance_score: 0.5,
+                reason: crate::domain::coding_thread::FileRelevanceReason::UserSpecified,
+                related_symbols: vec![],
+                thread_id: t.id,
+            });
+        }
+        let warnings = check_scope(&t);
+        assert!(!warnings.is_empty());
+    }
+
+    #[test]
+    fn test_fake_confidence_no_verification() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        t.confidence.record(0.8, "hopeful".into());
+        t.add_checkpoint("cp1".into());
+        t.add_checkpoint("cp2".into());
+        let warning = detect_fake_confidence(&t);
+        assert!(warning.is_some());
+    }
+
+    #[test]
+    fn test_no_fake_confidence_when_low() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        t.confidence.record(0.3, "uncertain".into());
+        let warning = detect_fake_confidence(&t);
+        assert!(warning.is_none());
+    }
+}

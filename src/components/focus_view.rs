@@ -38,7 +38,7 @@ fn render_no_thread(f: &mut Frame, area: Rect) {
     f.render_widget(text, area);
 }
 
-fn render_focus(f: &mut Frame, area: Rect, thread: &CodingThread, _app: &App) {
+fn render_focus(f: &mut Frame, area: Rect, thread: &CodingThread, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -49,19 +49,19 @@ fn render_focus(f: &mut Frame, area: Rect, thread: &CodingThread, _app: &App) {
         ])
         .split(area);
 
-    render_thread_header(f, chunks[0], thread);
+    render_thread_header(f, chunks[0], thread, app);
     render_next_step(f, chunks[1], thread);
     render_panels(f, chunks[2], thread);
     render_focus_keys(f, chunks[3]);
 }
 
-fn render_thread_header(f: &mut Frame, area: Rect, thread: &CodingThread) {
+fn render_thread_header(f: &mut Frame, area: Rect, thread: &CodingThread, app: &App) {
     let type_color = Theme::thread_type_color(&thread.thread_type);
     let conf = thread.confidence.current();
     let conf_color = Theme::confidence_color(conf);
     let trend = thread.confidence.trend();
 
-    let line = Line::from(vec![
+    let mut spans = vec![
         Span::styled(
             format!(" {} ", thread.thread_type.label()),
             Style::default()
@@ -87,8 +87,23 @@ fn render_thread_header(f: &mut Frame, area: Rect, thread: &CodingThread) {
             ),
             Theme::dim(),
         ),
-    ]);
+    ];
 
+    if !app.scope_warnings.is_empty() {
+        spans.push(Span::styled(
+            format!("  ⚠ {} scope", app.scope_warnings.len()),
+            Theme::warning(),
+        ));
+    }
+
+    if app.fake_confidence_warning.is_some() {
+        spans.push(Span::styled(
+            "  ⚠ confidence?",
+            Theme::danger(),
+        ));
+    }
+
+    let line = Line::from(spans);
     let header = Paragraph::new(Text::from(vec![Line::raw(""), line]));
     f.render_widget(header, area);
 }

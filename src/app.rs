@@ -204,6 +204,7 @@ pub struct App {
     // Scroll/selection state per screen
     pub home_selected: usize,
     pub explore_scroll: usize,
+    #[allow(dead_code)]
     pub focus_panel: FocusPanel,
 
     // Async operation state
@@ -245,6 +246,7 @@ pub enum InputTarget {
     SymbolRecord,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPanel {
     NextStep,
@@ -289,6 +291,24 @@ impl App {
             None => Session::new(repo_path),
         };
 
+        // Restore ephemeral per-thread state from session if available
+        let patch_memory = session
+            .patch_memories
+            .iter()
+            .find(|pm| Some(pm.thread_id) == session.active_thread_id)
+            .cloned()
+            .unwrap_or_else(|| {
+                PatchMemory::new(session.active_thread_id.unwrap_or(uuid::Uuid::nil()))
+            });
+        let symbol_trail = session
+            .symbol_trails
+            .iter()
+            .find(|st| Some(st.thread_id) == session.active_thread_id)
+            .cloned()
+            .unwrap_or_else(|| {
+                SymbolTrail::new(session.active_thread_id.unwrap_or(uuid::Uuid::nil()))
+            });
+
         Ok(Self {
             config,
             db,
@@ -309,12 +329,12 @@ impl App {
             unstuck_advice: None,
             drift_alerts: Vec::new(),
             verification_command: String::new(),
-            patch_memory: PatchMemory::new(uuid::Uuid::nil()),
+            patch_memory,
             patch_selected: 0,
             pending_patch_target: None,
             show_palette: false,
             palette_selected: 0,
-            symbol_trail: SymbolTrail::new(uuid::Uuid::nil()),
+            symbol_trail,
             scope_warnings: Vec::new(),
             fake_confidence_warning: None,
             ten_minute_view: None,
@@ -323,22 +343,6 @@ impl App {
     }
 
     // ── Repo context ──
-
-    pub fn refresh_repo(&mut self) -> Result<()> {
-        if let Some(path) = self.session.repo_path.clone() {
-            match RepoContext::build(&path, self.config.repo.max_scan_depth) {
-                Ok(ctx) => {
-                    self.repo_context = Some(ctx);
-                    self.notify("Repo scanned", NotificationKind::Success);
-                }
-                Err(e) => {
-                    tracing::error!("Repo scan failed: {e}");
-                    self.notify("Repo scan failed", NotificationKind::Error);
-                }
-            }
-        }
-        Ok(())
-    }
 
     pub fn refresh_git_only(&mut self) -> Result<()> {
         if let (Some(path), Some(ctx)) =
@@ -369,7 +373,25 @@ impl App {
 
     // ── Session management ──
 
+    /// Sync ephemeral per-thread state (patch_memory, symbol_trail) into the session
+    /// so they are serialized on the next save.
+    fn sync_ephemeral_to_session(&mut self) {
+        if self.patch_memory.thread_id != uuid::Uuid::nil() {
+            self.session
+                .patch_memories
+                .retain(|pm| pm.thread_id != self.patch_memory.thread_id);
+            self.session.patch_memories.push(self.patch_memory.clone());
+        }
+        if self.symbol_trail.thread_id != uuid::Uuid::nil() {
+            self.session
+                .symbol_trails
+                .retain(|st| st.thread_id != self.symbol_trail.thread_id);
+            self.session.symbol_trails.push(self.symbol_trail.clone());
+        }
+    }
+
     pub fn save(&mut self) -> Result<()> {
+        self.sync_ephemeral_to_session();
         self.db.save_session(&self.session)?;
         self.dirty = false;
         tracing::info!("Session saved");
@@ -485,7 +507,7 @@ impl App {
 }
 
 /// Guess thread type from raw goal text.
-fn guess_thread_type(text: &str) -> ThreadType {
+pub(crate) fn guess_thread_type(text: &str) -> ThreadType {
     let lower = text.to_lowercase();
     if lower.contains("bug") || lower.contains("fix") || lower.contains("broken") || lower.contains("crash") {
         ThreadType::Bug
@@ -501,5 +523,35 @@ fn guess_thread_type(text: &str) -> ThreadType {
         ThreadType::Chore
     } else {
         ThreadType::Feature
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_guess_bug() {
+        assert_eq!(guess_thread_type("fix the auth bug"), ThreadType::Bug);
+        assert_eq!(guess_thread_type("something is broken"), ThreadType::Bug);
+    }
+
+    #[test]
+    fn test_guess_debug() {
+        assert_eq!(guess_thread_type("trace the websocket"), ThreadType::Debug);
+        assert_eq!(guess_thread_type("trace the call chain"), ThreadType::Debug);
+        assert_eq!(guess_thread_type("inspect the state"), ThreadType::Debug);
+    }
+
+    #[test]
+    fn test_guess_refactor() {
+        assert_eq!(guess_thread_type("refactor the auth module"), ThreadType::Refactor);
+        assert_eq!(guess_thread_type("clean up the middleware"), ThreadType::Refactor);
+    }
+
+    #[test]
+    fn test_guess_feature_default() {
+        assert_eq!(guess_thread_type("add dark mode support"), ThreadType::Feature);
+        assert_eq!(guess_thread_type("implement pagination"), ThreadType::Feature);
     }
 }

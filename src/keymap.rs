@@ -88,6 +88,7 @@ pub fn map_key(key: KeyEvent, mode: &AppMode) -> Action {
         (KeyModifiers::CONTROL, KeyCode::Char('q')) => return Action::Quit,
         (KeyModifiers::CONTROL, KeyCode::Char('p')) => return Action::TogglePalette,
         (KeyModifiers::CONTROL, KeyCode::Char('e')) => return Action::ExportThread,
+        (KeyModifiers::CONTROL, KeyCode::Char('t')) => return Action::ToggleTenMinuteMode,
         _ => {}
     }
 
@@ -127,6 +128,9 @@ fn map_normal(key: KeyEvent) -> Action {
         KeyCode::Char('d') => Action::MarkDrift,
         KeyCode::Char('v') => Action::RunVerification,
         KeyCode::Char('a') => Action::AddHypothesis,
+        KeyCode::Char('w') => Action::CheckScope,
+        KeyCode::Char('o') => Action::RecordSymbol,
+        KeyCode::Char('z') => Action::SplitThread,
 
         KeyCode::Up | KeyCode::Char('j') => Action::ScrollUp,
         KeyCode::Down | KeyCode::Char('l') => Action::ScrollDown,

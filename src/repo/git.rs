@@ -156,14 +156,3 @@ pub fn git_file_diff(root: &Path, path: &str, staged: bool) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Detect what changed since a given commit (for "what changed while I was gone").
-pub fn git_changes_since(root: &Path, since_hash: &str) -> Result<Vec<String>> {
-    let output = Command::new("git")
-        .args(["diff", "--name-only", &format!("{since_hash}..HEAD")])
-        .current_dir(root)
-        .output()
-        .map_err(|e| AnchorError::Repo(format!("Failed to run git diff: {e}")))?;
-
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.lines().map(|l| l.to_string()).collect())
-}

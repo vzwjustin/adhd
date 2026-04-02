@@ -126,3 +126,52 @@ pub fn detect_perfectionism(thread: &CodingThread) -> Option<String> {
 
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::coding_thread::{CodingThread, ThreadType};
+
+    #[test]
+    fn test_no_drift_on_fresh_thread() {
+        let t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        let signals = detect_drift(&t);
+        assert!(signals.is_empty());
+    }
+
+    #[test]
+    fn test_drift_too_many_files_no_checkpoints() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        for i in 0..10 {
+            t.relevant_files.push(crate::domain::coding_thread::RelevantFile {
+                path: format!("file{i}.rs"),
+                relevance_score: 0.5,
+                reason: crate::domain::coding_thread::FileRelevanceReason::UserSpecified,
+                related_symbols: vec![],
+                thread_id: t.id,
+            });
+        }
+        let signals = detect_drift(&t);
+        assert!(signals.iter().any(|(s, _)| matches!(s, crate::domain::coding_thread::DriftSignal::TooManyFilesOpened)));
+    }
+
+    #[test]
+    fn test_drift_planning_without_verification() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        t.add_checkpoint("cp1".into());
+        t.add_checkpoint("cp2".into());
+        t.add_checkpoint("cp3".into());
+        let signals = detect_drift(&t);
+        assert!(signals.iter().any(|(s, _)| matches!(s, crate::domain::coding_thread::DriftSignal::PlanningWithoutVerification)));
+    }
+
+    #[test]
+    fn test_drift_side_quests_piling() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Feature);
+        t.park_side_quest("sq1".into(), None);
+        t.park_side_quest("sq2".into(), None);
+        t.park_side_quest("sq3".into(), None);
+        let signals = detect_drift(&t);
+        assert!(signals.iter().any(|(s, _)| matches!(s, crate::domain::coding_thread::DriftSignal::ScopeGrowth)));
+    }
+}

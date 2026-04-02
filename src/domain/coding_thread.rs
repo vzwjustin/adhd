@@ -407,3 +407,95 @@ pub struct VerificationResult {
     pub checkpoint_id: Option<Uuid>,
     pub ran_at: DateTime<Utc>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_thread_defaults() {
+        let t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        assert_eq!(t.thread_type, ThreadType::Bug);
+        assert_eq!(t.status, ThreadStatus::Active);
+        assert!(t.next_step.is_none());
+        assert!(t.relevant_files.is_empty());
+        assert!(t.checkpoints.is_empty());
+    }
+
+    #[test]
+    fn test_add_checkpoint() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Feature);
+        t.add_checkpoint("test checkpoint".into());
+        assert_eq!(t.checkpoints.len(), 1);
+        assert_eq!(t.checkpoints[0].summary, "test checkpoint");
+    }
+
+    #[test]
+    fn test_add_note() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Debug);
+        t.add_note("my note".into());
+        assert_eq!(t.notes.len(), 1);
+        assert_eq!(t.notes[0].text, "my note");
+    }
+
+    #[test]
+    fn test_park_side_quest() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Spike);
+        t.park_side_quest("side thing".into(), Some("context".into()));
+        assert_eq!(t.side_quests.len(), 1);
+        assert!(!t.side_quests[0].resumed);
+    }
+
+    #[test]
+    fn test_record_drift() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        t.record_drift(DriftSignal::ScopeGrowth, "growing".into());
+        assert_eq!(t.drift_events.len(), 1);
+        assert!(!t.drift_events[0].acknowledged);
+    }
+
+    #[test]
+    fn test_ignore_item() {
+        let mut t = CodingThread::new("raw".into(), "narrow".into(), ThreadType::Bug);
+        t.ignore_item("not now".into(), Some("later".into()));
+        assert_eq!(t.ignore_for_now.len(), 1);
+    }
+
+    #[test]
+    fn test_confidence_history() {
+        let mut c = ConfidenceHistory::new();
+        assert_eq!(c.current(), 0.5); // default
+        c.record(0.7, "good progress".into());
+        assert_eq!(c.current(), 0.7);
+        c.record(0.3, "setback".into());
+        assert_eq!(c.current(), 0.3);
+        assert_eq!(c.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_confidence_clamp() {
+        let mut c = ConfidenceHistory::new();
+        c.record(1.5, "over".into());
+        assert_eq!(c.current(), 1.0);
+        c.record(-0.5, "under".into());
+        assert_eq!(c.current(), 0.0);
+    }
+
+    #[test]
+    fn test_serde_roundtrip() {
+        let mut t = CodingThread::new("fix auth bug".into(), "fix session refresh".into(), ThreadType::Bug);
+        t.add_note("checked middleware".into());
+        t.add_checkpoint("found the issue".into());
+        t.confidence.record(0.6, "narrowed down".into());
+
+        let json = serde_json::to_string(&t).unwrap();
+        let t2: CodingThread = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(t2.raw_goal, "fix auth bug");
+        assert_eq!(t2.narrowed_goal, "fix session refresh");
+        assert_eq!(t2.thread_type, ThreadType::Bug);
+        assert_eq!(t2.notes.len(), 1);
+        assert_eq!(t2.checkpoints.len(), 1);
+        assert_eq!(t2.confidence.entries.len(), 1);
+    }
+}

@@ -44,11 +44,18 @@ fn render_header(f: &mut Frame, area: Rect) {
 fn render_main(f: &mut Frame, area: Rect, app: &App) {
     let cols = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
         .split(area);
 
     render_hypotheses(f, cols[0], app);
-    render_confidence(f, cols[1], app);
+
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(cols[1]);
+
+    render_confidence(f, right[0], app);
+    render_symbol_trail(f, right[1], app);
 }
 
 fn render_hypotheses(f: &mut Frame, area: Rect, app: &App) {
@@ -215,6 +222,50 @@ fn render_confidence(f: &mut Frame, area: Rect, app: &App) {
 
     let content = Paragraph::new(Text::from(lines)).block(block);
     f.render_widget(content, area);
+}
+
+fn render_symbol_trail(f: &mut Frame, area: Rect, app: &App) {
+    let block = Block::default()
+        .title(Span::styled(" Symbol Trail ", Theme::title()))
+        .borders(Borders::ALL)
+        .border_style(Theme::border())
+        .padding(Padding::horizontal(1));
+
+    let entries = app.symbol_trail.recent(8);
+
+    if entries.is_empty() {
+        let lines = vec![
+            Line::raw(""),
+            Line::styled("  No symbols visited yet.", Theme::dim()),
+        ];
+        let content = Paragraph::new(Text::from(lines)).block(block);
+        f.render_widget(content, area);
+        return;
+    }
+
+    let items: Vec<ListItem> = entries
+        .iter()
+        .map(|e| {
+            let file_short = e.file_path.rsplit('/').next().unwrap_or(&e.file_path);
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!("{} ", e.kind.label()),
+                    Theme::dim(),
+                ),
+                Span::styled(
+                    format!("{}:{}", file_short, e.symbol),
+                    Theme::body(),
+                ),
+                Span::styled(
+                    format!("  {}", format_relative(e.visited_at)),
+                    Theme::dim(),
+                ),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items).block(block);
+    f.render_widget(list, area);
 }
 
 fn render_keys(f: &mut Frame, area: Rect) {

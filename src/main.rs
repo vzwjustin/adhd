@@ -66,6 +66,7 @@ async fn main() -> Result<()> {
     // Initialize provider router
     let mut provider_router = ProviderRouter::new();
     setup_providers(&config, &mut provider_router);
+    provider_router.refresh_health().await;
 
     // Open database
     let db = Database::open(&config.db_path())?;
@@ -181,9 +182,42 @@ async fn handle_action(app: &mut App, action: Action) -> Result<()> {
         Action::NavigateHistory => app.navigate(Screen::History),
         Action::NavigateUnstuck => {
             // Compute drift alerts when entering unstuck
-            if let Some(thread) = app.active_thread() {
-                app.drift_alerts = services::drift::detect_drift(thread);
+            let drift = app
+                .active_thread()
+                .map(|t| services::drift::detect_drift(t))
+                .unwrap_or_default();
+            app.drift_alerts = drift;
+
+            // Try AI unstuck coach if a provider is available
+            if app.provider_router.has_providers() {
+                if let Some(thread) = app.active_thread() {
+                    let goal = thread.narrowed_goal.clone();
+                    let step = thread.next_step.clone();
+                    let stuck_desc = "User navigated to unstuck view".to_string();
+
+                    if let Ok(provider) =
+                        app.provider_router.route(providers::AgentRole::UnstuckCoach)
+                    {
+                        match agents::unstuck::run_unstuck(
+                            provider.as_ref(),
+                            &goal,
+                            step.as_deref(),
+                            &stuck_desc,
+                            None,
+                        )
+                        .await
+                        {
+                            Ok(output) => {
+                                app.unstuck_advice = Some(output);
+                            }
+                            Err(e) => {
+                                tracing::error!("Unstuck coach failed: {e}");
+                            }
+                        }
+                    }
+                }
             }
+
             app.navigate(Screen::Unstuck);
         }
         Action::NavigateVerify => {

@@ -8,10 +8,18 @@ use ratatui::{
 
 use crate::app::App;
 use crate::domain::coding_thread::ThreadStatus;
+use crate::services::thread_manager::TenMinuteView;
 use crate::theme::Theme;
 use crate::util::time::format_relative;
 
 pub fn render(f: &mut Frame, area: Rect, app: &App) {
+    if app.ten_minute_mode {
+        if let Some(ref view) = app.ten_minute_view {
+            render_ten_minute(f, area, view);
+            return;
+        }
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -24,6 +32,89 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
     render_banner(f, chunks[0], app);
     render_threads(f, chunks[1], app);
     render_quick_actions(f, chunks[2], app);
+}
+
+fn render_ten_minute(f: &mut Frame, area: Rect, view: &TenMinuteView) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Theme::border())
+        .padding(Padding::new(2, 2, 1, 1));
+
+    let conf_color = Theme::confidence_color(view.confidence);
+
+    let mut lines = vec![
+        Line::raw(""),
+        Line::styled(
+            "  10-Minute Mode",
+            Style::default()
+                .fg(Theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled("  Goal: ", Theme::dim()),
+            Span::styled(
+                &view.goal,
+                Style::default().fg(Theme::FG).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::raw(""),
+        Line::from(vec![
+            Span::styled("  Next: ", Theme::dim()),
+            Span::styled(
+                &view.next_step,
+                Style::default()
+                    .fg(Theme::ACCENT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+    ];
+
+    if let Some(ref file) = view.top_file {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(vec![
+            Span::styled("  Top file: ", Theme::dim()),
+            Span::styled(file, Theme::body()),
+        ]));
+    }
+
+    if !view.blockers.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled("  Blockers:", Theme::warning()));
+        for blocker in &view.blockers {
+            lines.push(Line::from(vec![
+                Span::styled("    · ", Theme::warning()),
+                Span::styled(blocker, Theme::body()),
+            ]));
+        }
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::styled("  Confidence: ", Theme::dim()),
+        Span::styled(
+            format!("{}%", (view.confidence * 100.0) as u8),
+            Style::default().fg(conf_color).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
+    if let Some(ref checkpoint) = view.last_checkpoint {
+        lines.push(Line::raw(""));
+        lines.push(Line::from(vec![
+            Span::styled("  Last checkpoint: ", Theme::dim()),
+            Span::styled(checkpoint, Theme::subtitle()),
+        ]));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::styled("  ", Theme::dim()),
+        Span::styled(" Ctrl+T ", Theme::key_hint()),
+        Span::styled(" to exit 10-minute mode", Theme::dim()),
+    ]));
+
+    let content = Paragraph::new(Text::from(lines)).block(block);
+    f.render_widget(content, area);
 }
 
 fn render_banner(f: &mut Frame, area: Rect, app: &App) {

@@ -27,21 +27,6 @@ impl Database {
                 clean_exit INTEGER NOT NULL DEFAULT 0
             );
 
-            CREATE TABLE IF NOT EXISTS threads (
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                data TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (session_id) REFERENCES sessions(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS kv (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_threads_session ON threads(session_id);
             CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at);
             ",
         )?;
@@ -129,28 +114,6 @@ impl Database {
             rusqlite::params![session_id],
         )?;
         Ok(())
-    }
-
-    /// KV store for small state (last session id, preferences, etc.)
-    pub fn kv_set(&self, key: &str, value: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT OR REPLACE INTO kv (key, value) VALUES (?1, ?2)",
-            rusqlite::params![key, value],
-        )?;
-        Ok(())
-    }
-
-    pub fn kv_get(&self, key: &str) -> Result<Option<String>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT value FROM kv WHERE key = ?1")?;
-        let result = stmt
-            .query_row(rusqlite::params![key], |row| {
-                let value: String = row.get(0)?;
-                Ok(value)
-            })
-            .optional()?;
-        Ok(result)
     }
 }
 

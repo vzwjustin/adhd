@@ -15,6 +15,10 @@ pub struct Session {
     pub started_at: DateTime<Utc>,
     pub last_active_at: DateTime<Utc>,
     pub clean_exit: bool,
+    #[serde(default)]
+    pub patch_memories: Vec<crate::domain::patch::PatchMemory>,
+    #[serde(default)]
+    pub symbol_trails: Vec<crate::domain::symbol_trail::SymbolTrail>,
 }
 
 impl Session {
@@ -28,6 +32,8 @@ impl Session {
             started_at: now,
             last_active_at: now,
             clean_exit: false,
+            patch_memories: Vec::new(),
+            symbol_trails: Vec::new(),
         }
     }
 
@@ -66,6 +72,7 @@ impl Session {
 }
 
 /// Lightweight summary for resume screen — avoids loading entire thread data
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSummary {
     pub id: Uuid,
