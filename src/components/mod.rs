@@ -1,0 +1,12 @@
+pub mod capture_view;
+pub mod command_palette;
+pub mod debug_view;
+pub mod explore_view;
+pub mod patch_view;
+pub mod focus_view;
+pub mod home_view;
+pub mod settings_view;
+pub mod status_bar;
+pub mod tab_bar;
+pub mod unstuck_view;
+pub mod verification_view;
