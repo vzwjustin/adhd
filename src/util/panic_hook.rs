@@ -1,17 +1,9 @@
-use crossterm::{
-    execute,
-    terminal::{disable_raw_mode, LeaveAlternateScreen},
-};
-use std::io::stderr;
-
-/// Install a panic hook that restores the terminal before printing the panic.
-/// This is critical — without it, a panic leaves the terminal in raw mode.
+/// Install a panic hook that prints a useful message.
 pub fn install() {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        // Best-effort terminal restore
-        let _ = disable_raw_mode();
-        let _ = execute!(stderr(), LeaveAlternateScreen);
+        // Ensure panic output is visible
+        eprintln!("\n\x1b[31manchor panicked!\x1b[0m");
         original_hook(panic_info);
     }));
 }

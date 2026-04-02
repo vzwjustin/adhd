@@ -1,13 +1,13 @@
 [package]
 name = "anchor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-description = "Repo-aware coding cockpit TUI for ADHD developers"
+description = "Agentic coding CLI with ADHD executive function — reads code, writes files, runs commands, stays focused"
 
 [dependencies]
-# TUI
-ratatui = "0.29"
-crossterm = { version = "0.28", features = ["event-stream"] }
+# CLI
+rustyline = "15"
+colored = "3"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
