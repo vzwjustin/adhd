@@ -146,14 +146,13 @@ A new enum variant without a corresponding match arm in all consumers is a compi
 ## 14. Stub / Dead Code / Fake-Complete Detection
 
 Aggressively watch for:
-- Action variants defined but not mapped to any key binding (currently: `ToggleTenMinuteMode`, `SplitThread`, `CheckScope`, `RecordSymbol`, `NavigateVerify`, `EditVerifyCommand`)
-- App state fields that no component reads (currently: `ten_minute_mode`, `ten_minute_view`, `scope_warnings`, `fake_confidence_warning`, `symbol_trail`, `focus_panel`)
-- Public methods never called (currently: `refresh_repo`, `set_role_preference`, `refresh_health`, `kv_set`, `kv_get`)
-- Database tables created but never used (currently: `threads`, `kv`)
+- Action variants defined but not mapped to any key binding (previously 6 were missing — all fixed 2026-04-02)
+- App state fields that no component reads (previously 6 invisible — all now rendered)
+- Public methods never called (remaining: `set_role_preference`)
 - Placeholder returns or no-op handlers
 - Code present only for appearance
 
-The 40 compiler warnings for dead code are documented but represent real incomplete wiring.
+The ~25 compiler warnings are documented — mostly unused struct fields and planned-feature `#[allow(dead_code)]` items. See `WIRING_STATUS.md` for the full dead code inventory.
 
 ## 15. No Scope-Dodging / Relatedness Discipline
 

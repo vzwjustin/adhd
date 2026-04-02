@@ -28,10 +28,18 @@
 **Discovered:** 2026-04-02 — previous CLAUDE.md claimed Phase 8 features as "fully wired" but they had no key bindings or renderers.
 **Prevention:** "Fully wired" means: key binding exists AND handler exists AND state is populated AND component renders it AND it persists if applicable. If any link is missing, call it "partially wired" or "backend-only".
 
-### L-004: Ephemeral state that looks persistent
+### L-004: Ephemeral state that looks persistent (RESOLVED but pattern still applies)
 **Pattern:** A data structure (e.g., `PatchMemory`, `SymbolTrail`) is stored in `App` and used during a session, but is not serialized to SQLite. User assumes it persists; it is lost on quit.
 **Impact:** User creates patch plans or symbol trails, quits, relaunches, and finds them gone.
-**Prevention:** When adding stateful features, decide persistence up front. If ephemeral, document it. If it should persist, serialize it in `Database::save_session()` or add a dedicated table.
+**Resolution:** Fixed 2026-04-02 — `sync_ephemeral_to_session()` now syncs both to Session JSON before every save. Restored in `App::new()`.
+**Prevention:** When adding stateful features, decide persistence up front. If ephemeral, document it. If it should persist, wire `sync_ephemeral_to_session()` and the restore path in `App::new()`.
+**Remaining gap:** Thread switching via `set_active_thread()` does not swap in-memory ephemeral state. Data correct at save boundaries but stale if threads switched mid-session.
+
+### L-005: Parallel agent edits can create merge conflicts in shared files
+**Pattern:** When 5 agents edit different concerns but touch overlapping files (e.g., multiple agents editing `app.rs`, `main.rs`), edits can conflict or the last writer wins.
+**Impact:** Intermediate compile errors from conflicting changes. Requires post-merge verification.
+**Discovered:** 2026-04-02 — 5 parallel agents all modified `main.rs` and `app.rs`. Diagnostics showed errors during execution that resolved once all agents completed.
+**Prevention:** When dispatching parallel agents, assign file ownership boundaries. If shared files must be touched, designate one agent as owner and have others report changes for that agent to apply.
 
 ## 2. Universal Heuristics
 
@@ -55,8 +63,8 @@ Phase 8 gaps were created because Phase 7 was already underway before Phase 8 ke
 ### L-020: "If the handler exists, the feature works"
 False. The handler is one link in a chain: key → action → handler → state → renderer → persistence. Any missing link breaks the feature silently.
 
-### L-021: "40 warnings are all expected dead code"
-Partially true — most are future-phase placeholders. But some (like `refresh_health` never called) represent genuinely incomplete wiring, not just future plans. Treat dead-code warnings as a mix of planned and unplanned.
+### L-021: "N warnings are all expected dead code"
+Partially true — most are planned-feature placeholders marked `#[allow(dead_code)]`. But dead-code warnings can also indicate genuinely incomplete wiring (e.g., the original `refresh_health` never called). After the fix cycle, warnings dropped from 40 to 25. Treat warning count changes as a signal — increases may indicate new incomplete wiring.
 
 ### L-022: "JSON-in-SQLite is fine for persistence"
 True at small scale. But `Session` contains all threads inline. As threads accumulate notes, checkpoints, hypotheses, files, drift events, and verifications, the JSON blob grows. Monitor for performance degradation on sessions with 10+ threads and heavy activity.
@@ -69,8 +77,8 @@ Rust's type system is excellent at catching missing match arms. It catches nothi
 ### L-031: grep for the new symbol in ALL consumer locations, not just the definition
 When adding `ToggleTenMinuteMode`, grep `map_normal` to verify the key binding, grep `components/` to verify rendering, grep `save_session` to verify persistence. Don't stop at "it compiles".
 
-### L-032: No test coverage means every refactor is manual verification
-This repo has zero tests. Any change to domain types, serialization, or wiring requires manual build + code-read verification at minimum. Plan for this cost.
+### L-032: Limited test coverage means most refactors still need manual verification
+This repo now has 21 tests covering domain types, drift, scope guard, and thread classification. But there are no integration tests, no UI tests, and no provider tests. Changes outside tested areas still require manual verification. Expanding test coverage reduces this cost.
 
 ## 5. Refactor Lessons
 

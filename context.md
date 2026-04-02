@@ -39,12 +39,12 @@ src/
   util/            — 4 files (errors, logging, panic_hook, time)
 ```
 
-**55 Rust files. ~8,329 lines. Edition 2024. Zero compile errors. ~40 dead-code warnings.**
+**55 Rust files. ~8,688 lines. Edition 2024. Zero compile errors. ~25 dead-code warnings. 21 tests passing.**
 
 ### Build / Test / Tooling
-- **Build:** `cargo build` — zero errors, ~40 warnings (expected dead code)
+- **Build:** `cargo build` — zero errors, ~25 warnings (expected dead code)
 - **Lint:** `cargo clippy` — clean
-- **Test:** No tests exist. This is a TUI binary crate. No `#[test]` or `#[cfg(test)]` blocks anywhere.
+- **Test:** `cargo test` — 21 tests across 4 files (domain types, drift detection, scope guard, thread type classification). No integration or UI tests.
 - **Dependencies:** ratatui 0.29, crossterm 0.28, tokio 1, rusqlite 0.32 (bundled), serde, reqwest, chrono, uuid, dirs, thiserror, tracing, async-trait
 - **Search tools:** `ast-grep` (`sg`) available at `/opt/homebrew/bin/sg`
 
@@ -105,33 +105,31 @@ src/
 5. **File relevance must carry reasons.** Every `RelevantFile` has a `FileRelevanceReason` — no file surfaces without explanation.
 6. **AI output validated.** Agent passes validate JSON with serde. Malformed output retried, then falls back to local parsing.
 7. **Provider abstraction sealed.** `Provider` trait is the only interface — no provider-specific types leak to domain or UI.
-8. **Threads inline in session.** Threads are serialized as part of Session JSON, not in the separate `threads` table.
+8. **Threads inline in session.** Threads are serialized as part of Session JSON. The `threads` SQL table was removed (never used).
+9. **Ephemeral state synced on save.** `patch_memory` and `symbol_trail` are synced to Session via `sync_ephemeral_to_session()` before every save/autosave, and restored from Session on `App::new()`.
 
 ## 7. Behavioral Invariants
 
 1. **Safe quit is always available.** `q` or `Ctrl+Q` always triggers `safe_quit()` → mark clean exit → save → restore terminal.
 2. **Input mode is modal.** `AppMode::Input` captures all keystrokes to the input buffer. `Esc` always exits input mode.
 3. **InputTarget determines Enter behavior.** The same input buffer serves Capture, Note, SideQuest, IgnoreItem, Hypothesis, VerifyCommand, PatchTarget, PatchIntent, SymbolRecord.
-4. **Provider routing is first-healthy.** `ProviderRouter.route()` returns the first registered provider whose health cache says usable. Since `refresh_health()` is never called, health cache is empty, so `is_usable()` always returns true, so the first registered provider always wins.
+4. **Provider routing is first-healthy.** `ProviderRouter.route()` returns the first registered provider whose health cache says usable. `refresh_health()` is called at startup, so the health cache is populated on launch. Providers marked unreachable at startup will be skipped.
 5. **Thread creation always navigates to Focus.** `create_thread()` sets `screen = Screen::Focus`.
 6. **Autosave is non-blocking.** Autosave fires from event tick, calls `save()` synchronously, logs errors but does not crash.
 
 ## 8. Known Risks / Watch Areas
 
-1. **main.rs is 853 lines.** Contains all action handlers and AI pass wrappers. Growing this further risks maintainability. Consider extracting action handlers to a separate module.
-2. **No tests.** Any refactor has zero automated regression protection. Manual verification after changes is critical.
-3. **Session JSON blob.** All threads serialize as one JSON blob. Large sessions with many threads could hit SQLite text limits or slow down save/load.
-4. **Provider health never checked.** The health monitoring infrastructure exists but `refresh_health()` is never called. Providers are assumed healthy.
-5. **Patch memory is ephemeral.** `PatchMemory` lives in `App` state but is not persisted to SQLite. Patches are lost on quit.
-6. **Symbol trail is ephemeral.** Same — not persisted across sessions.
-7. **Scope warnings not rendered.** `scope_warnings` and `fake_confidence_warning` are computed and stored in App but no component reads them.
-8. **Ten-minute mode has no UI.** State toggles exist but no component renders the compressed view.
+1. **main.rs is ~900 lines.** Contains all action handlers and AI pass wrappers. Growing this further risks maintainability. Consider extracting action handlers to a separate module.
+2. **21 tests exist but coverage is limited.** Tests cover domain types, drift detection, scope guard, and thread type classification. No integration tests, no UI tests, no provider tests. Refactors in untested areas still need manual verification.
+3. **Session JSON blob.** All threads + patch memories + symbol trails serialize as one JSON blob. Large sessions with many threads could hit SQLite text limits or slow down save/load.
+4. **Provider health checked only at startup.** `refresh_health()` is called once at launch. Providers that go down mid-session are not detected until the next launch.
+5. **Thread switching does not swap ephemeral state.** When switching active thread via `set_active_thread()`, in-memory `patch_memory` and `symbol_trail` are not swapped. Data is correct at save boundaries but stale in memory if threads are switched mid-session.
 
 ## 9. Current Known State
 
 See `WIRING_STATUS.md` for detailed evidence-backed status of every subsystem.
 
-**Summary:** Core flow (capture → focus → resume → checkpointing → autosave → safe quit) is fully wired and persisted. Repo scanning, file relevance, and AI agents work end-to-end when providers are configured. Phase 8 features (symbol trail, scope guard, 10-min mode, thread split/merge) have backend logic but lack UI wiring or key bindings to reach them.
+**Summary:** All 8 phases are fully wired and user-reachable. Every feature has key bindings, handlers, renderers, and persistence. 21 tests cover domain types and key services. See `WIRING_STATUS.md` for remaining minor gaps (`set_role_preference` unused, `merge_threads` no key binding).
 
 ## 10. Root-Cause Watchpoints
 

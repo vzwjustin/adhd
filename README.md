@@ -76,6 +76,7 @@ Anchor can always answer:
 | `Ctrl+C` / `Ctrl+Q` | Quit (safe, autosaves) |
 | `Ctrl+P` | Command palette |
 | `Ctrl+E` | Export thread to markdown |
+| `Ctrl+T` | Toggle 10-minute mode |
 | `Tab` / `Shift+Tab` | Cycle tabs |
 | `Esc` | Back / cancel input |
 
@@ -89,6 +90,9 @@ Anchor can always answer:
 | `i` | Ignore item |
 | `d` | Flag drift |
 | `a` | Add hypothesis |
+| `w` | Check scope (scope guard + fake confidence detector) |
+| `o` | Record symbol to trail |
+| `z` | Split thread |
 | `n` | New thread |
 | `p` | Pause thread |
 
@@ -206,7 +210,7 @@ src/
   util/              — errors, logging, panic hook, time
 ```
 
-**55 Rust files. 8,329 lines. Zero compile errors.**
+**55 Rust files. 8,688 lines. Zero compile errors. 21 tests.**
 
 ## Design Principles
 
