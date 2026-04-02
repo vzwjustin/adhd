@@ -248,76 +248,126 @@ async fn handle_user_input(app: &mut App, input: &str) {
         return;
     }
 
-    // Build agent context
     let thread = app.active_thread().unwrap();
-    let thread_ctx = format!(
-        "Thread: [{}] {}\nNext step: {}\nFiles: {}\nConfidence: {}%",
-        thread.thread_type.label(), thread.narrowed_goal,
+    let system = format!(
+        "You are Anchor, an agentic coding assistant for a developer with ADHD.\n\n\
+         RULES:\n\
+         - Read files before editing. Never guess contents.\n\
+         - After edits, run the build command to verify.\n\
+         - Use checkpoint after meaningful progress.\n\
+         - Use park_side_quest for tangential observations — do NOT pursue them.\n\
+         - If you notice drift from the main goal, use flag_drift.\n\
+         - Stay focused on the current thread goal.\n\n\
+         Current thread: [{}] {}\n\
+         Next step: {}\n\
+         Confidence: {}%\n\
+         {}",
+        thread.thread_type.label(),
+        thread.narrowed_goal,
         thread.next_step.as_deref().unwrap_or("none"),
-        thread.relevant_files.iter().take(5).map(|f| f.path.as_str()).collect::<Vec<_>>().join(", "),
         (thread.confidence.current() * 100.0) as u8,
+        app.repo_context.as_ref().map(|c| c.summary_for_provider()).unwrap_or_default(),
     );
-    let repo_summary = app.repo_context.as_ref().map(|c| c.summary_for_provider()).unwrap_or_default();
 
     let provider = match app.provider_router.route(providers::AgentRole::Intake) {
         Ok(p) => p,
         Err(e) => { cli::print_notification(&format!("Provider error: {e}"), cli::NotifKind::Error); return; }
     };
 
-    let system = format!(
-        "You are Anchor, an agentic coding assistant for a developer with ADHD.\n\n\
-         {tool_defs}\n\n\
-         RULES:\n\
-         - Read files before editing. Never guess contents.\n\
-         - One tool call per response. No mixing prose and tool calls.\n\
-         - After edits, run build to verify.\n\
-         - Checkpoint after meaningful progress.\n\
-         - Stay focused on the current thread goal.\n\n\
-         Context:\n{thread_ctx}\n\nRepo:\n{repo_summary}",
-        tool_defs = tools::tool_definitions(),
-    );
-
-    let mut messages = vec![providers::Message { role: providers::Role::User, content: input.to_string() }];
+    let tool_defs = tools::tool_definitions();
+    let mut messages: Vec<providers::ConversationMessage> = vec![
+        providers::ConversationMessage::Text {
+            role: providers::Role::User,
+            content: input.to_string(),
+        },
+    ];
 
     cli::print_notification("Thinking...", cli::NotifKind::Info);
 
-    for _step in 0..15 {
-        let request = providers::CompletionRequest {
-            system_prompt: system.clone(), messages: messages.clone(),
-            output_schema: None, max_tokens: 2048, temperature: 0.2,
+    // Agentic loop — native tool calling via Anthropic API
+    for _step in 0..20 {
+        let request = providers::ToolCompletionRequest {
+            system_prompt: system.clone(),
+            messages: messages.clone(),
+            tools: tool_defs.clone(),
+            max_tokens: 16000,
         };
 
-        match provider.complete(request).await {
+        match provider.complete_with_tools(request).await {
             Ok(response) => {
-                let content = response.content.trim().to_string();
+                // Print any text
+                if !response.text.is_empty() {
+                    cli::print_agent_response(&response.text);
+                }
 
-                // Try tool call parse
-                if let Ok(tool_call) = serde_json::from_str::<tools::ToolCall>(&content) {
-                    let root = app.session.repo_path.clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+                // If no tool calls, done
+                if response.stop_reason != "tool_use" || response.tool_uses.is_empty() {
+                    break;
+                }
 
-                    // Handle ADHD-specific tools via App state
-                    match &tool_call {
-                        tools::ToolCall::Checkpoint { summary } => { if let Some(t) = app.active_thread_mut() { t.add_checkpoint(summary.clone()); } }
-                        tools::ToolCall::ParkSideQuest { description } => { if let Some(t) = app.active_thread_mut() { t.park_side_quest(description.clone(), None); } }
-                        tools::ToolCall::FlagDrift { description } => { if let Some(t) = app.active_thread_mut() { t.record_drift(domain::DriftSignal::ScopeGrowth, description.clone()); } }
-                        tools::ToolCall::AddNote { text } => { if let Some(t) = app.active_thread_mut() { t.add_note(text.clone()); } }
+                // Echo assistant's response (with tool_use blocks) back
+                messages.push(providers::ConversationMessage::AssistantRaw {
+                    content: response.raw_content.clone(),
+                });
+
+                let repo_root = app.session.repo_path.clone()
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+                for tool_use in &response.tool_uses {
+                    // Handle ADHD tools via App state
+                    match tool_use.name.as_str() {
+                        "checkpoint" => {
+                            let s = tool_use.input.get("summary").and_then(|v| v.as_str()).unwrap_or("checkpoint").to_string();
+                            if let Some(t) = app.active_thread_mut() { t.add_checkpoint(s.clone()); }
+                            cli::print_notification(&format!("Checkpoint: {s}"), cli::NotifKind::Success);
+                        }
+                        "park_side_quest" => {
+                            let d = tool_use.input.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            if let Some(t) = app.active_thread_mut() { t.park_side_quest(d.clone(), None); }
+                            cli::print_notification(&format!("Parked: {d}"), cli::NotifKind::Info);
+                        }
+                        "flag_drift" => {
+                            let d = tool_use.input.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                            if let Some(t) = app.active_thread_mut() { t.record_drift(domain::DriftSignal::ScopeGrowth, d.clone()); }
+                            cli::print_notification(&format!("Drift: {d}"), cli::NotifKind::Warning);
+                        }
+                        "thread_status" => {
+                            if let Some(t) = app.active_thread() { cli::print_thread_status(t); }
+                        }
                         _ => {}
                     }
 
-                    let result = tools::execute_tool(&tool_call, &root);
-                    cli::print_tool_result(&result);
+                    // Execute tool
+                    let result = tools::execute_tool(&tool_use.name, &tool_use.input, &repo_root);
 
-                    messages.push(providers::Message { role: providers::Role::Assistant, content: content.clone() });
-                    messages.push(providers::Message { role: providers::Role::User, content: format!("Tool result:\n{}\n{}", result.output, result.error.unwrap_or_default()) });
-                    app.dirty = true;
-                    continue;
+                    // Print result
+                    let label = format!("[{}]", tool_use.name);
+                    if result.is_error {
+                        println!("  {} {}", label, "error".red());
+                    } else {
+                        println!("  {} {}", label, "ok".green());
+                    }
+                    let lines: Vec<&str> = result.output.lines().collect();
+                    if lines.len() <= 8 {
+                        for l in &lines { println!("    {l}"); }
+                    } else {
+                        for l in &lines[..4] { println!("    {l}"); }
+                        println!("    ... ({} more lines)", lines.len() - 4);
+                    }
+
+                    // Send tool_result back
+                    messages.push(providers::ConversationMessage::ToolResult {
+                        tool_use_id: tool_use.id.clone(),
+                        content: result.output,
+                        is_error: result.is_error,
+                    });
                 }
-
-                // Not a tool call — final response
-                cli::print_agent_response(&content);
+                app.dirty = true;
+            }
+            Err(e) => {
+                cli::print_notification(&format!("AI error: {e}"), cli::NotifKind::Error);
                 break;
             }
-            Err(e) => { cli::print_notification(&format!("AI error: {e}"), cli::NotifKind::Error); break; }
         }
     }
 }

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt;
 
-use crate::util::errors::Result;
+use crate::util::errors::{AnchorError, Result};
 
 /// Core provider trait. Every AI provider adapter must implement this.
 /// Designed for structured output — the domain never sees raw prose.
@@ -19,6 +20,12 @@ pub trait Provider: Send + Sync {
     /// Send a structured completion request and get a structured response.
     /// The caller provides the JSON schema the output must conform to.
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse>;
+
+    /// Send a request with native tool calling support.
+    /// Default implementation returns an error — override in providers that support it.
+    async fn complete_with_tools(&self, _request: ToolCompletionRequest) -> Result<ToolCompletionResponse> {
+        Err(AnchorError::Provider("Tool calling not supported by this provider".to_string()))
+    }
 }
 
 /// What a provider can do — used for routing decisions.
@@ -145,4 +152,78 @@ impl AgentRole {
             Self::Fallback => "Fallback",
         }
     }
+}
+
+// ── Native tool calling types ─────────────────────────────────────────────────
+
+/// A tool definition sent to the API.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub input_schema: Value,
+}
+
+/// A tool call returned by the API.
+#[derive(Debug, Clone)]
+pub struct ToolUse {
+    pub id: String,
+    pub name: String,
+    pub input: Value,
+}
+
+/// Request with native tool support.
+pub struct ToolCompletionRequest {
+    pub system_prompt: String,
+    pub messages: Vec<ConversationMessage>,
+    pub tools: Vec<ToolDefinition>,
+    pub max_tokens: usize,
+}
+
+/// A conversation message that can be text, assistant-with-tool-use, or tool-result.
+#[derive(Debug, Clone)]
+pub enum ConversationMessage {
+    Text {
+        role: Role,
+        content: String,
+    },
+    AssistantRaw {
+        content: Vec<ContentBlockRaw>,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        is_error: bool,
+    },
+}
+
+/// A content block — used for both request and response.
+/// Fields are optional because different block types use different fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentBlockRaw {
+    #[serde(rename = "type")]
+    pub block_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_use_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_error: Option<bool>,
+}
+
+/// Response with tool call support.
+pub struct ToolCompletionResponse {
+    pub text: String,
+    pub tool_uses: Vec<ToolUse>,
+    pub stop_reason: String,
+    pub raw_content: Vec<ContentBlockRaw>,
+    pub usage: Option<TokenUsage>,
 }

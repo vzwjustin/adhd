@@ -123,26 +123,15 @@ pub fn print_thread_status(thread: &CodingThread) {
 
 /// Print a tool result.
 pub fn print_tool_result(result: &crate::tools::ToolResult) {
-    if result.success {
-        println!(
-            "\n{} {}",
-            format!("[{}]", result.tool).bright_blue(),
-            "ok".green()
-        );
+    if !result.is_error {
+        println!("\n{}", "ok".green());
     } else {
-        println!(
-            "\n{} {}",
-            format!("[{}]", result.tool).bright_blue(),
-            "failed".red()
-        );
+        println!("\n{}", "failed".red());
     }
     if !result.output.is_empty() {
         for line in result.output.lines() {
             println!("  {line}");
         }
-    }
-    if let Some(ref err) = result.error {
-        println!("  {} {}", "error:".red(), err);
     }
 }
 
